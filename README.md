@@ -1,4 +1,4 @@
-# Agentic PPI Affinity-Enhancing Miniprotein Design
+# Agentic PPI Affinity Enhancing Miniprotein Design
 
 An agentic system for designing miniproteins that bind to protein dimer interfaces, increasing the likelihood that two proteins remain bound together. This pipeline analyzes protein complexes, identifies critical binding interfaces, and generates small stabilizing proteins that can enhance protein-protein interactions in dimeric systems.
 
