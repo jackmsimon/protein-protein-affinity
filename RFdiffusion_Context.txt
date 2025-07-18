@@ -1,0 +1,386 @@
+Instructions for Determining contigs and hotspot_res from combined_analysis.json
+Overview
+These instructions guide a Language Model (LLM) through a step-by-step process to analyze a combined_analysis.json file and determine appropriate string arguments for contigmap.contigs (referred to as contigs) and ppi.hotspot_res (referred to as hotspot_res) for the RFdiffusion protein binder design module. The goal is to automate the selection of a target pocket on a protein and define a suitable binder length and interface residues for designing a de novo binder. The LLM will use the data in combined_analysis.json – which contains information about potential binding pockets and key residues (hot spots) on the target protein – to make decisions without human intervention.Key definitions:
+Pocket: A cavity or surface groove on the target protein that could accommodate a binder. Pockets are typically characterized by properties like size, shape (concavity), hydrophobicity, etc.​
+PMC.NCBI.NLM.NIH.GOV
+.
+Hotspot residues: Specific amino acid residues on the target protein that are critical for binding. Protein-protein interactions often depend on just a few key "hot spot" residues that contribute disproportionately to binding energy​
+JOURNALS.PLOS.ORG
+. These are prime interaction targets for a designed binder.
+contigs string: In RFdiffusion, this parameter describes which parts of the target structure are fixed and the length of the new binder to design​
+MEILERLAB.ORG
+. It typically includes the target chain (or segment) range, a special chain-break marker, and the binder length or length range​
+MEILERLAB.ORG
+.
+hotspot_res string: This parameter lists the target's hotspot residues (by chain and residue number) that the binder should interact with​
+MEILERLAB.ORG
+. The diffusion model will be biased to create an interface covering these residues.
+By following these instructions, the LLM will extract relevant pocket data, evaluate pocket suitability using sensible criteria (without a fixed scoring formula), choose the best pocket region to target, and then formulate the contigs and hotspot_res strings. The process accounts for practical constraints like binder size (generally aiming for no more than ~70–80 amino acids in the designed binder) and ensures the output format is exactly as required by RFdiffusion.
+Step 1: Extract Key Data from combined_analysis.json
+Load and parse the JSON structure: The LLM should begin by reading the combined_analysis.json content. Identify the section that lists predicted pockets or binding sites. This is often an array or dictionary field (e.g., "pockets", "sites", or similar). Each entry typically contains details about one pocket on the target protein.
+Identify pocket entries: For each pocket entry in the JSON, extract the relevant attributes. Common data fields to look for include:
+Pocket ID or index: A unique identifier for the pocket (e.g., "id": 1).
+Location/Chain: Which protein chain (and possibly residue range or center) the pocket is on. For example, a field might specify "chain": "A" or list residues belonging to the pocket (like "residues": ["A45", "A46", "A47", ...]).
+Size/Volume: The size of the pocket (could be a volume in cubic Å, or number of pocket-lining residues). This indicates how large a binder might be accommodated.
+Shape/Depth: A measure of pocket concavity or depth, if provided. A deep concave pocket can better cradle a binder, whereas a shallow flat surface might be more challenging.
+Hydrophobicity/Polarity: Some analyses provide the fraction of hydrophobic residues or a hydrophobic score for the pocket. This gives insight into the pocket's character (hydrophobic patches often indicate key interaction sites, but a binder must present complementary surface chemistry).
+Scoring metrics: Many pocket-finding tools assign a score or druggability index to each pocket. This might be a composite score (often between 0 and 1) indicating how likely the pocket could bind a ligand or be a good target​
+PMC.NCBI.NLM.NIH.GOV
+. Higher scores generally suggest more "favorable" pockets. Extract any such score (e.g., "score": 0.85 or "druggability": 0.6).
+Hotspot residues: Critically, extract any hotspot residue information. The JSON may explicitly list key residues for each pocket (e.g., "hotspot_residues": ["A45", "A48", "A52"]). These are the residues the analysis identified as important for binding (for instance, via energy-based methods or conservation analysis). If the JSON doesn't explicitly label hotspots, identify fields that imply residue importance (such as per-residue energy contribution or a rank of residues within the pocket).
+Ensure all relevant data is captured: The LLM should now have, for each pocket entry, a set of relevant attributes (at least: pocket ID, chain, any scores, pocket size metrics, and a list of significant residues in that pocket, including marked hotspots if available). This information will feed into the decision-making in subsequent steps.
+Example (for illustration): After parsing, the LLM might have something like:
+Pocket 1: on chain A, volume = 250 Å³, score = 0.9, residues = [A45, A46, A47, A48, A49], hotspot_residues = [A46, A48].
+Pocket 2: on chain A, volume = 180 Å³, score = 0.7, residues = [A120, A121, A122], hotspot_residues = [A121].
+(This is a hypothetical summary of two pockets' data extracted from the JSON.)
+Step 2: Evaluate Pocket Suitability Criteria
+With all pocket data extracted, the LLM should evaluate how suitable each pocket might be for designing a binder. There is no single strict scoring formula to apply; instead, the LLM will use qualitative judgment with multiple criteria. Important factors to consider for each pocket include:
+Pocket Size (Volume/Extent): Generally, a larger pocket or interface area can accommodate a binder more easily. A volume large enough to bury ~1600 Å² of surface (typical for protein-protein interfaces​
+PMC.NCBI.NLM.NIH.GOV
+) is desirable, but extremely large or diffuse surfaces might indicate a broad shallow area rather than a well-defined pocket. The LLM should note if a pocket is too small (might not allow a ~50 residue binder to make sufficient contacts) or appropriately sized. If numeric volumes are given, compare them relatively: e.g., a pocket of 300 Å³ vs one of 100 Å³ – the former is likely more suitable.
+Shape and Depth: A concave, enclosed pocket is typically better for binding than a flat or convex surface. If the analysis provides a measure of concavity or depth, a higher value suggests the binder can fit snugly. The LLM should favor pockets described as deep clefts or cavities. (Many enzyme active sites are in the largest cleft of a protein​
+PMC.NCBI.NLM.NIH.GOV
+, which often correlates with a good binding site.) If only qualitative hints are present (like a list of pocket-lining residues), the LLM can infer: a pocket spanning a continuous sequence segment might be more like a groove; one composed of residues far apart in sequence but close in 3D often indicates a concave surface.
+Hydrophobic vs Polar Character: An ideal binding interface often has a mix of hydrophobic patches (for favorable van der Waals contacts) and some polar contacts (for specificity via hydrogen bonds or salt bridges). If the pocket has a hydrophobic core (e.g., several non-polar residues grouped), that can be a strong anchor point for a binder's hydrophobic side chains. However, if a pocket is entirely hydrophobic and solvent-exposed, a binder might risk aggregation unless designed carefully. If the pocket is mostly polar/charged residues, a binder will need complementary charges/polar groups; this is feasible, but entirely polar interfaces can be weaker if not paired correctly. The LLM should mark pockets with a balanced or dominant hydrophobic character as favorable, since many hotspot residues in PPI are large hydrophobics or aromatics​
+PMC.NCBI.NLM.NIH.GOV
+.
+Identified Hotspot Residues: This is a critical factor. Pockets that include multiple hotspot residues (as identified by the analysis) are often prime candidates for binder design. Hotspot residues are those that contribute significantly to binding energy – mutating them typically disrupts binding​
+JOURNALS.PLOS.ORG
+. The LLM should strongly favor pockets with a higher number of hotspot residues or with particularly important ones. For example, a pocket that has 3+ hotspots (residues highlighted by the analysis) is likely a better binder target than one with none or just one hotspot, even if the latter pocket is larger. The presence of hotspot residues indicates the pocket is biologically relevant for binding and the binder can be guided to interact with those key positions.
+Pocket Score or Rank: If the combined_analysis.json provides an overall score/rank per pocket (such as a druggability score from a tool like Fpocket or an energy-based score), use this as an initial guide. A higher score suggests a more ligandable pocket. For instance, Fpocket's druggability score ranges 0 to 1 (with >0.5 often considered druggable)​
+FPOCKET.SOURCEFORGE.NET
+. The LLM should note which pocket has the highest score. However, do not rely solely on this score; cross-check it against the other criteria. A slightly lower-scoring pocket that has multiple hotspots might be preferable to the top-scoring pocket that has no clear hotspots.
+Accessibility and Context: Consider if the pocket is accessible for a binder protein. If the pocket is buried too deeply in the interior (unlikely if identified as a surface pocket, but possible if it's at a subunit interface or such), a binder might struggle to reach it unless the binder is very extended. Pockets on the protein surface or at protein-protein interfaces are more accessible. If the JSON indicates any pocket is at a known protein-protein interface or a functional site (active site, allosteric site), that context could increase its relevance as a target. The LLM should note if a pocket is part of an interface between two chains (which might be complex to target with a single-chain binder unless one chain is absent in the design context).
+Additional considerations: Any other data provided (e.g., presence of a bound ligand in that pocket, or evolutionary conservation of residues) can inform pocket importance. A pocket where a natural ligand or cofactor binds, or a cluster of highly conserved residues, likely represents a biologically significant site worth targeting.
+Scoring without a strict formula: The LLM is expected to weigh the above factors with good judgment. For instance, size, shape, and hydrophobicity are known important descriptors for binding-site quality​
+PMC.NCBI.NLM.NIH.GOV
+, so they should be given considerable weight. Identified hotspots are extremely important (perhaps the highest weight, since they directly relate to binding energy). Pocket score can be used as a quantitative hint but not the sole decider. There isn't a precise numeric formula to combine these, but the LLM should qualitatively rank pockets (e.g., "Pocket 2 appears more promising than Pocket 1 because it has two hotspot residues and sufficient volume, whereas Pocket 1 is slightly larger but has no identified hotspots."). The goal is to emulate a human expert's reasoned choice of the best pocket, rather than a rigid calculation.
+Step 3: Select the Optimal Pocket for Binder Design
+After evaluating each pocket against the criteria in Step 2, the LLM will decide which pocket is the best target for designing a binder. This decision should be made systematically:
+Rank or compare pockets: Using the qualitative assessment, determine an order of suitability. If one pocket clearly excels in most criteria (e.g., highest score, multiple hotspot residues, decent size), select that one immediately. If two or more pockets each have advantages and no single pocket is obviously superior, weigh their differences:
+Example: Pocket A is larger and slightly more druggable-scored, but Pocket B is smaller yet contains three hotspots (versus none in A). Here, Pocket B's multiple hotspots likely outweigh the size advantage of Pocket A, since a binder can gain more binding energy targeting those hotspots​
+JOURNALS.PLOS.ORG
+.
+As another example: If Pocket X and Pocket Y both have similar size and each has some hotspots, consider which has a better configuration (e.g., are the hotspots clustered in a region a single binder can cover? Does one pocket have hotspots spread too far apart which might require a very large binder?).
+Check practical feasibility: Consider whether a binder can realistically be designed to the pocket in question:
+Hotspot clustering: If the chosen pocket's hotspot residues are clustered (within ~20–30 Å region), a single binder of reasonable size can likely contact all of them. If they are extremely far apart on the protein surface (e.g., opposite ends of a large protein), then one binder might not cover both. In such a case, if those far apart hotspots were listed under one "pocket" (perhaps the analysis grouped a broad surface region), it might be better to focus on a subset or pick a different pocket that is more localized.
+Binder size limits: The binder should generally not exceed ~70–80 amino acids for practical design and folding reasons. (In many successful designs, binders are in the 50–80 residue range​
+MEILERLAB.ORG
+.) Ensure the pocket you choose would not obviously require a significantly larger binder. If it appears to require >80 residues to span the interface (due to distance between contact points), it might be less ideal. However, most pockets identified by such analyses will be within a single domain region and suitable for a binder in that range.
+Make the selection: Decide on one pocket (in most cases) that the binder will target. This will define what part of the target protein is included as the fixed context in design (for the contigs string) and which residues are hotspot constraints. If the analysis or user context suggests designing multiple binders for multiple pockets, these instructions can be repeated per pocket; but typically, you pick the best pocket to design a primary binder.
+Document the chosen pocket's details: The LLM should note internally which pocket (ID or description) was chosen and why (in terms of data). For example: "Pocket 2 on chain A, residues 50–58, chosen due to highest combined score and presence of 3 hotspot residues forming a contiguous patch." This reasoning will directly inform how we construct the output strings next.
+By the end of this step, the LLM has a clear target pocket (and its associated chain and residues) for the binder design.
+Step 4: Determine the contigs String (Target Segments and Binder Length)
+With the target pocket selected, the LLM will now formulate the contigmap.contigs string, which tells RFdiffusion which parts of the structure are fixed (the target) and the length of the binder to be designed. This step involves two sub-tasks: deciding which target residues to include (the contig for the target) and deciding the binder length range.4.1 Define the target contig segment:
+Include the relevant chain: Identify the chain letter of the target pocket (e.g., chain A or B). This chain (or a portion of it) will be fixed during diffusion. Typically, one includes the entire target chain if it's not too large, ensuring the binder "sees" the full context. In many binder design setups, the full target chain is marked fixed​
+MEILERLAB.ORG
+, especially if the protein is a single chain or a single domain target. For example, if the pocket is on chain A which has 150 residues, the contig might start with A1-150 to fix all of chain A​
+MEILERLAB.ORG
+.
+Consider cropping (optional): If the target protein is very large (multi-domain or multi-chain) and the pocket is localized to one region, the LLM can choose to include only that region to simplify the design. Cropping the target means selecting a residue range around the pocket. For instance, if the pocket's residues span roughly A50–A60, one might fix A40–70 as the target segment instead of the entire chain. Cropping focuses the diffusion on the interface region and can improve efficiency. Use good judgment here: include some flanking residues beyond the hotspot cluster for structural context (perhaps ~10–20 residues on each side if possible). Ensure that all hotspot residues chosen (from Step 5 below) are within the fixed segment. If uncertain, or if the chain is moderate in size, it's safer to include the full chain.
+Multiple chains scenario: If the target protein has multiple chains (e.g., a heterodimer) and the pocket lies at an interface or on one chain, decide which chains to include. Often, one includes only the chain that contains the pocket. Including an additional chain might be necessary if the pocket is at a multi-chain interface and that interface is what you want to target (designing a binder to a protein-protein interface). In such advanced cases, you might include two chains in the fixed context. For simplicity, these instructions assume a single-chain target or a single chain of interest. If two chains are included, the contigs format would list both (with appropriate breaks – see below).
+Record the chain and residue range: Determine the start and end residue numbers of the segment to fix. For full chains, this is just the first to last residue of that chain (from the PDB or sequence info, which might be known or provided in the JSON or separate metadata). For a partial segment, use the chosen boundaries. For example, you might have A30-75 for a segment of chain A.
+4.2 Choose the binder length range:
+Estimate needed binder size: Based on the pocket's size and spread of hotspot residues, estimate how long the binder should be. Aim to cover the interface with some extra length to form a stable fold. A typical de novo binder is around 50–80 residues​
+MEILERLAB.ORG
+. If the pocket is compact (e.g., all hotspots in a tight cluster), a smaller binder (50–60 residues) might suffice. If the pocket is extended or you have multiple contact points slightly apart, you might lean toward the higher end (70–80 residues) to allow the binder to have additional loops or secondary structure spanning the region.
+Avoid overly large binders: As a rule, do not set a binder length much above 80 residues. Designing >80 residue novel proteins is possible but increasingly challenging; the model and sampling might not perform as well, and the binder could be unstable. Using a range up to 70 or 80 provides flexibility without going beyond reasonable size. If the analysis suggests a very large surface (which would need >80 residues), consider that the binder might not cover everything – it's usually better to focus on the core hotspot region than to try to cover an entire huge surface.
+Use a length range or fixed length: The contigs parameter allows specifying a range (e.g., 50-80) or a fixed length (e.g., 60-60 would force a 60-residue binder). A range is often used to give the diffusion model flexibility to find an optimal length in that window. If unsure, a range like 50-80 is a good default for many scenarios​
+MEILERLAB.ORG
+. If the pocket is clearly of a certain scale, a narrower range can be set (e.g., 50-60 if we strongly suspect ~55 residues is enough). For instance, an example from Levitate Bio's interface sets a fixed length of 50 for the binder (50-50) when exactly 50 residues were desired​
+LEVITATE.BIO
+. The LLM can choose a fixed length if instructed or if analysis indicates a very specific requirement, but typically a range is safer.
+Keep length realistic: Ensure the minimum length in the range is not too low either – very short binders (<40 aa) are usually not realistic to fold stably and cover an interface. So setting a minimum around 40–50 is prudent unless the pocket is exceptionally small.
+4.3 Construct the contigs string:
+The format is:
+ini
+Copy
+Edit
+contigmap.contigs=[ChainStart-ChainEnd/0 BinderMin-BinderMax]
+Begin with a square bracket [ and the chain segment for the target. Use the chain identifier and the start–end residues (inclusive) of the fixed segment. For example: A1-150 for chain A residues 1 through 150​
+MEILERLAB.ORG
+. If using a subset, e.g., A40-70. If multiple segments or chains are included, list them in sequence separated by spaces. (Each separate contiguous segment should be listed; different chains inherently count as separate segments.) For example, if chain A 1–150 and chain B 1–100 were both fixed, one could list A1-150 B1-100 before the /0.
+After the target segment(s), insert /0 (a zero with no additional numbers) to indicate a chain break​
+MEILERLAB.ORG
+. This tells RFdiffusion that the next part will be a new chain (the binder) separate from the target chain(s). Include a space on each side of /0 as shown, because the contigs string requires it as a delimiter​
+MEILERLAB.ORG
+​
+MEILERLAB.ORG
+. (The space before the binder length range is important; it ensures the model adds a large gap so it treats the binder as a separate entity​
+MEILERLAB.ORG
+.)
+Finally, specify the binder length or length range immediately after the space following /0. For example: 50-80 or 60-60. This number (or range) does not need a chain identifier, since it refers to the new designed chain.
+Close the square bracket ]. The whole string should be enclosed in quotes when passed as a parameter (e.g., in a command or JSON), but in our output we typically show it as it would appear in the parameter file or command.
+Double-check formatting: The chain identifier is a single letter (as in PDB files). The residue numbers should correspond to those in the target PDB. If the combined analysis provided residue indices relative to a sequence, ensure they match the PDB numbering. For example, if the pocket residues are A50–A60, A1-150 as a full chain covers them. If cropping, say to A40-70, make sure 40–70 indeed includes 50–60.
+In summary, a contigs string might look like:
+Full chain example: ["A1-150/0 50-80"] (meaning fix chain A 1–150, then a new chain of length 50–80 as binder)​
+MEILERLAB.ORG
+.
+Partial segment example: ["A40-70/0 50-70"] (meaning fix residues 40–70 of chain A, then binder 50–70 residues long).
+Multi-chain example: ["A1-150 B1-100/0 50-80"] (meaning fix chain A 1–150 and chain B 1–100, then binder of length 50–80). In practice, if the input PDB has both chains A and B, listing them without an intervening break should treat them as separate fixed segments. (If uncertain, one could insert an explicit 0 between chain listings as well, but generally chain letters separate automatically. The critical /0 is needed before the binder segment.)
+By the end of this step, the LLM will have formed the contigmap.contigs string. For example, it might have decided on contigmap.contigs=[A1-120/0 50-80] for a target that is chain A 1–120 and a binder of 50–80 residues.
+Step 5: Determine the hotspot_res String (Hotspot Residues for the Interface)
+Next, the LLM will compile the ppi.hotspot_res string, which directs RFdiffusion to focus the binder-interface on specific target residues. These should correspond to the hotspot residues in the chosen pocket (from Step 3). Here's how to decide and format this list:
+Gather candidate residues: From the chosen pocket's data (from Step 1), take the list of identified hotspot residues. These are typically explicitly given (e.g., a JSON field "hotspot_residues" with values like ["A45","A48","A52"]). If the analysis provides a ranked list of important residues or an importance score per residue, select those with highest importance that lie within the pocket. The focus should be on residues that form the core of the binding site. Remember, hotspots are usually a small cluster of key residues that contribute most of the binding energy in natural interfaces​
+JOURNALS.PLOS.ORG
+. The binder will aim to interact with all of these.
+Refine the hotspot list: It's usually best to choose a handful of the most significant hotspots rather than an exhaustive list of every pocket residue. Aim for perhaps 3 to 6 residues. The example tutorial used 3 residues (Phe59, Phe83, Phe91) as hotspots​
+MEILERLAB.ORG
+​
+MEILERLAB.ORG
+, and other examples might list more (the Levitate Bio example lists 9 residues in hotspot_res​
+LEVITATE.BIO
+). Use good judgment:
+If the analysis explicitly marks certain residues as hotspots, use those. If it marks too many (say >6-8), consider selecting the top few by whatever ranking is given (e.g., highest energy contribution or highest conservation).
+Make sure all chosen hotspots are within the region of the target that will be present (i.e., within the contigs fixed segment chosen). If you cropped the target to A40-70 but a hotspot at A83 was listed, that's a mistake – you should only list hotspots that the binder can actually reach (which means they must be part of the fixed structure in contigs).
+If no explicit hotspot list is given but you have to infer: pick residues in the pocket that are particularly noteworthy (for example, a deeply buried hydrophobic residue, or a residue that formed many contacts in known complexes, or simply the center of the pocket). The LLM can infer a hotspot by combining clues: residues that are outliers in some scoring metric, or the largest side chains in a cluster, etc. Conservatism is key – better to pick a few likely important ones than many uncertain ones.
+Format the hotspot_res string: The format should be:
+ini
+Copy
+Edit
+ppi.hotspot_res=["ChainIDResidueNumber","ChainIDResidueNumber",...]
+All hotspot residues are listed inside one pair of square brackets, separated by commas. Each residue is identified by its chain letter followed immediately by the residue number (as in the PDB). For example: ppi.hotspot_res=[A45,A48,A52] would specify three hotspots on chain A​
+MEILERLAB.ORG
+. Ensure there are no quotes around individual residues and no spaces between entries; only commas separate them. The entire list is typically given as a string in quotes when passed as a parameter (similar to contigs).
+The chain IDs here must correspond to the target chain(s) fixed in contigs. In almost all cases, it will be the same single chain (e.g., all "A#" if the target chain is A). If for some reason you included multiple chains in contigs (multi-chain interface), include hotspots from the relevant chains, each with their own prefix. For instance, ppi.hotspot_res=[A123,B45,B46] could mean residue 123 on chain A, and residues 45,46 on chain B are hotspots to engage.
+Double-check that the residue numbers are correct and exist in the target PDB. The LLM should use the exact numbering as given in the analysis output (which should match the PDB). If the analysis used a different numbering (e.g., sequence index vs PDB numbering), convert them if needed using provided mapping.
+Validate the hotspot list size: Having 3–5 residues is a good balance: it provides the diffusion model clear signals on where to form contacts, without over-constraining the design. If only 1–2 hotspots are given, that's okay (the binder will at least target those), though more hotspots lead to a more defined interface. If more than ~6 are provided, consider if they are all necessary – they might represent a large interface. It's not wrong to include many, but the binder will need to be larger or very specifically designed to hit all, which increases challenge. Use the pocket evaluation from Step 2 to decide if trimming the list makes sense (e.g., focus on the central core residues).
+Also consider distribution: if two hotspots are very close (even adjacent), that's fine. If they are far, ensure the binder length chosen can span that distance.
+At this stage, the LLM will have a hotspot_res string ready, e.g., ppi.hotspot_res=[A45,A48,A52]. This, together with the contigs string from Step 4, defines the design problem for RFdiffusion (fixing the target structure and biasing interactions to specified residues).
+Step 6: Finalize and Output the Selected contigs and hotspot_res
+In this final step, the LLM should output the determined strings in a clear format that can be directly used in the RFdiffusion binder design module input. Typically, these would be provided as parameter lines or within a configuration JSON. Ensure the output is well-formatted and double-checked:
+Contigs string output: Provide the contigmap.contigs string exactly as constructed. For example:
+text
+Copy
+Edit
+contigmap.contigs=["A1-150/0 50-80"]
+This indicates the target segment and the binder length range​
+MEILERLAB.ORG
+. Make sure the brackets and /0 and range are all correct.
+Hotspot_res string output: Provide the ppi.hotspot_res string. For example:
+text
+Copy
+Edit
+ppi.hotspot_res=["A45","A48","A52"]
+Listing the chosen hotspot residues with chain IDs​
+MEILERLAB.ORG
+.
+These lines should match exactly the format expected by the RFdiffusion script or interface. Usually, they would appear either in a command-line call or a config file. For instance, a full command might include ... 'contigmap.contigs=[A1-150/0 50-80]' 'ppi.hotspot_res=[A59,A83,A91]' ... as shown in the RFdiffusion tutorial​
+MEILERLAB.ORG
+. In an automated setting, we might output them as two separate lines or a JSON structure with those as values. The instructions assume a simple text output of the strings is sufficient.
+No additional commentary in output: When the LLM is actually generating the final output for use, it should typically output just the parameters (unless otherwise directed). For the purpose of this instructions file, we will showcase examples including some context, but in deployment the LLM's answer might be expected to be just the strings or a minimal explanation and the strings.
+Now the LLM is ready to use these instructions to analyze any given combined_analysis.json and produce the contigs and hotspot_res parameters. The approach is fully automated, relying solely on the data provided and the logical framework above – no human input is needed during the analysis.
+Examples of Applying the Instructions
+Below are multiple example scenarios with sample data from a combined_analysis.json and the resulting contigs and hotspot_res selections. These illustrate how the decision framework is applied in practice. In each example, the Input is a simplified representation of relevant JSON content for pockets, and the Output is the chosen contigmap.contigs and ppi.hotspot_res strings along with brief reasoning.
+Example 1: Single High-Quality Pocket on Chain A
+Input (Pocket Data):
+json
+Copy
+Edit
+{
+  "pockets": [
+    {
+      "id": 1,
+      "chain": "A",
+      "score": 0.88,
+      "volume": 300,
+      "hotspot_residues": ["A45", "A48", "A52"]
+    }
+  ]
+}
+Analysis: There is only one pocket identified on chain A. It has a fairly high score (0.88) and a large volume (~300). Importantly, three hotspot residues are listed (A45, A48, A52), indicating a strong binding site. The residues are on chain A and likely form a cluster (since 45–52 suggests they are in the same vicinity). The target protein's chain A length (let's assume it's 120 residues from other info) is moderate. The binder can be designed to cover that region easily.
+Output:
+contigmap.contigs: We include the full chain A (to provide complete context of the target) and specify a binder length range of 50–70. A range narrower than the max 80 is chosen because the pocket, while well-defined, is not extremely large; ~70 residues binder should suffice.
+contigmap.contigs=["A1-120/0 50-70"]
+(Here we assume chain A is 1–120. The /0 separates the fixed target from the binder, and the binder is allowed to be 50 to 70 residues.)
+ppi.hotspot_res: We use the provided hotspot residues directly. They are already in the desired format with chain identifiers.
+ppi.hotspot_res=["A45","A48","A52"]
+(These outputs tell RFdiffusion to fix chain A from residue 1 to 120, and generate a binder 50–70 aa long that interfaces with A45, A48, and A52 on the target.)
+Example 2: Multiple Pockets with One Dominant Hotspot Cluster
+Input (Pocket Data):
+json
+Copy
+Edit
+{
+  "pockets": [
+    {
+      "id": 1,
+      "chain": "A",
+      "score": 0.60,
+      "volume": 180,
+      "hotspot_residues": ["A10"]
+    },
+    {
+      "id": 2,
+      "chain": "A",
+      "score": 0.75,
+      "volume": 220,
+      "hotspot_residues": ["A50", "A53", "A57"]
+    }
+  ]
+}
+Analysis: Two pockets are identified on the same chain (A). Pocket 1 (ID 1) has a lower score (0.60), a smaller volume, and only one hotspot (A10). Pocket 2 has a higher score (0.75), larger volume, and three hotspots (A50, A53, A57) that form a cluster. Clearly, Pocket 2 is more promising: it has multiple hotspot residues in what appears to be a contiguous region (50–57) and generally better metrics. The LLM selects Pocket 2. Assume chain A is 1–120 in length again. The cluster around 50s suggests the binder will target that area.
+The LLM decides to include the entire chain A for context (since 120 residues is not too large). Alternatively, it could crop to A40–70 to focus on that region; both approaches would work. We'll use full chain for simplicity. For binder length, Pocket 2's three hotspots span a short stretch (50 to 57), which might be covered by a ~50-residue binder, but to allow some flexibility and potential secondary structure, we'll permit up to 80.
+Output:
+contigmap.contigs: Fix chain A (1–120) and allow a binder of length up to 80 (starting from a reasonable minimum like 50).
+contigmap.contigs=["A1-120/0 50-80"]
+ppi.hotspot_res: Use the hotspots from Pocket 2.
+ppi.hotspot_res=["A50","A53","A57"]
+(The output indicates the binder design will target chain A (residues 1–120) with a new binder chain of 50–80 residues, focusing on interacting with A50, A53, A57. Pocket 2's hotspots are all included.)
+Example 3: Pocket on Chain B of a Multi-Chain Target
+Input (Pocket Data):
+json
+Copy
+Edit
+{
+  "pockets": [
+    {
+      "id": 3,
+      "chain": "B",
+      "score": 0.92,
+      "volume": 210,
+      "hotspot_residues": ["B100", "B103", "B107", "B110"]
+    }
+  ],
+  "target_chains": {
+    "A": 250,
+    "B": 150
+  }
+}
+Analysis: Here the target protein has at least two chains (A and B). The combined analysis identified Pocket 3 on chain B with a high score (0.92), decent volume, and four hotspot residues (B100, B103, B107, B110). This looks like an attractive site on chain B, possibly an interface or active site region. We will design a binder to chain B. Chain A might be another part of the protein not directly involved in this pocket, so we won't include chain A in the fixed context (assuming we only care about binding to B's pocket). Chain B is 150 residues long (given by target_chains info). That's a manageable size to include fully. The hotspots (100–110) suggest the pocket is in the C-terminal region of chain B. They are relatively close to each other (within 10 residues span), likely forming a tight cluster – good for targeting. We'll select Pocket 3 on chain B.
+For the binder, since there are four hotspots spanning B100 to B110, a binder on the larger side of the range may be beneficial to cover them all (they might wrap around a surface). We'll choose a range like 50–80 again, leaning towards the upper end if needed. The full chain B will be fixed in contigs (or we could crop to, say, B90–120, but using full chain B 1–150 is fine to ensure structural context around the pocket).
+Output:
+contigmap.contigs: Fix chain B (1–150) as the target, and design a binder 50–80 residues. (Chain A is not included here, effectively meaning if the input PDB had both A and B, one might supply only chain B's coordinates or ignore A, since we didn't list A in contigs. For this example, assume we isolate chain B for design.)
+contigmap.contigs=["B1-150/0 50-80"]
+ppi.hotspot_res: List the four hotspot residues on chain B.
+ppi.hotspot_res=["B100","B103","B107","B110"]
+(This output sets up binder design on chain B (residues 1–150) with a new binder chain of 50–80 aa, targeting residues B100, B103, B107, B110 on B. The binder will aim to interface with those four key residues.)
+Example 4: Cropping the Target Region (Optional Scenario)
+Input (Pocket Data):
+json
+Copy
+Edit
+{
+  "pockets": [
+    {
+      "id": 5,
+      "chain": "A",
+      "score": 0.80,
+      "volume": 250,
+      "hotspot_residues": ["A30", "A88"]
+    }
+  ],
+  "notes": "Pocket spans two distant regions on surface"
+}
+Analysis: In this scenario, suppose Pocket 5 on chain A has two hotspot residues A30 and A88, which are relatively far apart in sequence (and possibly on the surface). The analysis note suggests the pocket might actually be a broad surface or two sub-pockets considered as one. This poses a challenge: a single binder may not easily cover both A30 and A88 if they are not proximal in 3D. The LLM should consider whether to target both or focus on one sub-pocket. If 3D data indicates they are part of one continuous interface (perhaps a large groove connecting them), a binder might still be able to bind spanning that distance, but it could require a very long binder or a disjoint design. Given the binder size constraint (~80 max), it might be wise to focus on one cluster. If, for example, A88 is near other residues that also form a hotspot cluster (not listed, but maybe the analysis only flagged the highest two), perhaps one cluster is around A88 and the other around A30. For illustration, let's say the LLM chooses to focus on the region around A88, assuming it's part of a larger local pocket, and treats A30 as a separate site that won't be targeted in this design.
+The LLM could crop the target to just the region around A80–A100 to isolate the A88 pocket. Say chain A is 150 residues long, but we include only A70–100 in contigs to focus on that area. Binder length maybe 50–60 since it's a smaller region now.
+Output:
+contigmap.contigs: Crop chain A to residues 70–100 (containing A88) and design a binder ~50–60 residues.
+contigmap.contigs=["A70-100/0 50-60"]
+ppi.hotspot_res: Only include the hotspot in that region (A88). (If there were additional important residues near A88 from further analysis, we would include them too, but using just A88 as given.)
+ppi.hotspot_res=["A88"]
+(In practice, if focusing only on A88, one might want at least one more hotspot in that region to give the binder a clear target – this example is mainly to show cropping. If A30 and A88 truly form one continuous pocket, an alternative would be to keep both and choose a binder on the very high end of length, ~80–90, but that risks the binder being too large. Here we opted to target the latter region. The contigs reflect the cropped segment of the target.)
+Note: The above examples demonstrate how the LLM should form the outputs in different scenarios. In each case, the methodology (steps 1–5) is applied: parsing the data, evaluating pockets, selecting the best option, and constructing the strings. The LLM should be able to handle variations in input gracefully – whether there's one obvious pocket or several competing ones, whether the target is single or multi-chain, and whether the hotspots are tightly clustered or somewhat dispersed.By following these structured instructions, the LLM will produce consistent and rationale choices for contigs and hotspot_res. The decision-making balances quantitative scores with chemical/structural intuition (as encoded in these guidelines), mimicking how a protein engineer might choose an interface to target. The outputs can then be fed directly into RFdiffusion's binder design pipeline to generate candidate binder structures.
+Important: When specifying residue numbers, use the exact PDB residue numbering from the input structure. Do not assume residues start at 1. Check the PDB file to determine the actual residue numbers for each chain. For example, if chain B starts at residue 16, then the contig should be "B16-357" not "B1-357".
+
+Handling Missing Residues When Generating the contigs String
+Background:
+RFdiffusion requires that every residue number specified in the contigs string is present in the input PDB file. If the contigs string includes a residue that is missing (for example, due to experimental gaps), the diffusion run will fail with an error such as:
+
+"Residue B145 is not in pdb file."
+
+To avoid this, you must adjust the contigs string so that it skips over missing residues. Your combined_analysis.json now includes keys that list the missing residue numbers for each chain. For example:
+
+json
+Copy
+{
+  "A": [
+    145,
+    146,
+    147,
+    148
+  ],
+  "B": [
+    145,
+    146,
+    147,
+    148,
+    293,
+    294,
+    295,
+    296,
+    297,
+    298,
+    299,
+    300,
+    301,
+    302,
+    303,
+    304,
+    305,
+    306,
+    307
+  ]
+}
+Procedure:
+
+Identify Missing Residues:
+
+The combined_analysis.json (or a separate completed_analysis.json file) provides a dictionary of missing residue numbers per chain.
+For chain A, if residues 145–148 are missing, then the actual, available residues in a continuous range might be 1–144 and 149–N (e.g., 150).
+Adjust the contigs Range:
+
+When you want to fix a target region (say, A1–150), you must exclude missing residues. In our example for chain A, the adjusted contig string becomes:
+
+"A1-144 A149-150"
+
+This means:
+
+Fix residues A1–144 (which are present),
+Then fix residues A149–150 (skipping over the missing residues 145–148).
+Construct the Full contigs Parameter:
+
+After adjusting for missing residues, append the chain break marker (/0) and the binder length range. For example:
+
+"contigs": "A1-144 A149-150/0 50-100"
+
+This instructs RFdiffusion to:
+
+Keep the fixed target region from chain A, skipping missing residues,
+Then generate a binder of 50–100 residues on a new chain.
+Integration into the Automated Workflow:
+
+Your code (or LLM instructions) should first check the combined_analysis.json for each chain’s missing residues.
+
+When generating the contigs string, it should split the intended residue range into segments that exclude any missing residues.
+
+For example, using helper functions (as demonstrated in the Python snippet below):
+
+python
+Copy
+def adjust_contig_range(chain: str, start: int, end: int, missing_list: list) -> str:
+    """
+    Given a desired contig range (chain, start, end) and a sorted list of missing residue numbers,
+    return an adjusted contig string that skips over missing residues.
+    Example: For chain 'A', range 1–150 with missing residues [145, 146, 147, 148],
+    returns "A1-144 A149-150".
+    """
+    segments = []
+    current_start = start
+    for m in missing_list:
+        if m < start or m > end:
+            continue
+        if current_start < m:
+            segments.append(f"{chain}{current_start}-{chain}{m-1}")
+        current_start = m + 1
+    if current_start <= end:
+        segments.append(f"{chain}{current_start}-{chain}{end}")
+    return " ".join(segments)
+
+# Example usage:
+missing_in_A = [145, 146, 147, 148]  # Retrieved from combined_analysis.json for chain A
+adjusted_contig_A = adjust_contig_range("A", 1, 150, missing_in_A)
+# adjusted_contig_A will be: "A1-144 A149-150"
+contigs_string = f"{adjusted_contig_A}/0 50-100"
+print("Adjusted contigs string:", contigs_string)
+This function ensures that the final contigs string correctly omits any residue numbers not present in the PDB.

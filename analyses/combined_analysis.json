@@ -1,0 +1,46 @@
+{
+  "interface_analysis": {
+    "perimeter_residues": [
+      "LYS A175",
+      "LYS A198",
+      "LYS A207",
+      "LYS B198",
+      "SER B223"
+    ],
+    "output_file": "/Users/jacksimon/Bioengineering DSL/modules/INCREASE/Binder/analyses/interface_analysis.json"
+  },
+  "pocket_analysis": {},
+  "missing_residues": {
+    "missing_residues": {
+      "A": [
+        145,
+        146,
+        147,
+        148
+      ],
+      "B": [
+        145,
+        146,
+        147,
+        148,
+        293,
+        294,
+        295,
+        296,
+        297,
+        298,
+        299,
+        300,
+        301,
+        302,
+        303,
+        304,
+        305,
+        306,
+        307
+      ]
+    },
+    "output_file": "/Users/jacksimon/Bioengineering DSL/modules/INCREASE/Binder/analyses/missing_residues.json"
+  },
+  "pdb_path": "/Users/jacksimon/Bioengineering DSL/files/FGFR2_dimer.pdb"
+}
